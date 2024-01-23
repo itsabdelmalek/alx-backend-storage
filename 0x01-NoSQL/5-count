@@ -1,2 +1,2 @@
-// Count
-db.school.count()
+// Script that Counts the number of documents
+db.school.estimatedDocumentCount()

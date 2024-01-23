@@ -1,2 +1,2 @@
-// All documents
+// Script that finds All documents
 db.school.find()
