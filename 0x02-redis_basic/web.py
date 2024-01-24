@@ -3,64 +3,39 @@
 Redis module with Cache class and decorators.
 """
 
-import requests
 import redis
-import time
-from functools import wraps
+import requests
 from typing import Callable
+from functools import wraps
+
+redis = redis.Redis()
 
 
-def count_calls_and_cache(url_func: Callable) -> Callable:
+def wrap_requests(fn: Callable) -> Callable:
     """
-    Decorator to count the number of times a URL is accessed.
+    wrapping decortors for requests
     """
-    @wraps(url_func)
-    def wrapper(url: str) -> str:
-        count_key = f"count:{url}"
-        result_key = f"result:{url}"
 
-        # Increment the access count
-        redis_client.incr(count_key)
-
-        # Check if the result is already cached
-        cached_result = redis_client.get(result_key)
-        if cached_result:
-            return cached_result.decode("utf-8")
-
-        # If not cached, fetch the result from the URL
-        response = url_func(url)
-
-        # Cache the result with an expiration time of 10 seconds
-        redis_client.setex(result_key, 10, response)
-
-        return response
+    @wraps(fn)
+    def wrapper(url):
+        """
+        wrapping fucntors for requests
+        """
+        redis.incr(f"count:{url}")
+        cash_resp = redis.get(f"cached:{url}")
+        if cash_resp:
+            return cash_resp.decode('utf-8')
+        rslt = fn(url)
+        redis.setex(f"cached:{url}", 10, rslt)
+        return rslt
 
     return wrapper
 
 
-@count_calls_and_cache
+@wrap_requests
 def get_page(url: str) -> str:
     """
-    Fetch the HTML content of a URL using the requests module.
+    gets the page
     """
-    response = requests.get(url)
-    return response.text
-
-
-if __name__ == "__main__":
-    # Initialize Redis client
-    redis_client = redis.Redis()
-
-    # Example usage
-    s_ul = "http://slowwly.robertomurray.co.uk/delay/5000/url/www.google.com"
-    fast_url = "http://www.google.com"
-
-    for _ in range(3):
-        print(get_page(s_ul))
-
-    for _ in range(3):
-        print(get_page(fast_url))
-
-    # Display access count for the slow URL
-    slow_url_count = redis_client.get(f"count:{s_ul}")
-    print(f"Access count for {s_ul}: {slow_url_count.decode('utf-8')}")
+    resp = requests.get(url)
+    return resp.text
