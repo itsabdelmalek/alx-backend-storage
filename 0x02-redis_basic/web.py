@@ -1,51 +1,66 @@
 #!/usr/bin/env python3
 """
-Web module with get_page function.
+Redis module with Cache class and decorators.
 """
 
 import requests
+import redis
+import time
 from functools import wraps
-from typing import Callable, Any
-from datetime import datetime, timedelta
+from typing import Callable
 
 
-def cache_result(method: Callable) -> Callable[..., Any]:
+def count_calls_and_cache(url_func: Callable) -> Callable:
     """
-    A decorator to cache the result of a method with a expiration time.
-    :param method: The method to be decorated.
-    :return: The decorated method.
+    Decorator to count the number of times a URL is accessed.
     """
-    cache = {}
+    @wraps(url_func)
+    def wrapper(url: str) -> str:
+        count_key = f"count:{url}"
+        result_key = f"result:{url}"
 
-    @wraps(method)
-    def wrapper(*args, **kwargs):
-        """
-        Wrapper function to cache the result of the original method.
-        :param args: Arguments passed to the method.
-        :param kwargs: Keyword arguments passed to the method.
-        :return: The result of the original method, either from the cache or
-                 by invoking the original method.
-        """
-        key, e_tme = args[0], timedelta(seconds=10)
+        # Increment the access count
+        redis_client.incr(count_key)
 
-        if key in cache and (datetime.now() - cache[key]['timestamp']) < e_tme:
-            print(f"Using cached result for {key}")
-            return cache[key]['result']
-        else:
-            result = method(*args, **kwargs)
-            cache[key] = {'result': result, 'timestamp': datetime.now()}
-            print(f"Result cached for {key}")
-            return result
+        # Check if the result is already cached
+        cached_result = redis_client.get(result_key)
+        if cached_result:
+            return cached_result.decode("utf-8")
+
+        # If not cached, fetch the result from the URL
+        response = url_func(url)
+
+        # Cache the result with an expiration time of 10 seconds
+        redis_client.setex(result_key, 10, response)
+
+        return response
 
     return wrapper
 
 
-@cache_result
+@count_calls_and_cache
 def get_page(url: str) -> str:
     """
-    Obtain the HTML content of a particular URL using the requests module.
-    :param url: The URL to fetch.
-    :return: The HTML content of the URL.
+    Fetch the HTML content of a URL using the requests module.
     """
     response = requests.get(url)
     return response.text
+
+
+if __name__ == "__main__":
+    # Initialize Redis client
+    redis_client = redis.Redis()
+
+    # Example usage
+    s_ul = "http://slowwly.robertomurray.co.uk/delay/5000/url/www.google.com"
+    fast_url = "http://www.google.com"
+
+    for _ in range(3):
+        print(get_page(s_ul))
+
+    for _ in range(3):
+        print(get_page(fast_url))
+
+    # Display access count for the slow URL
+    slow_url_count = redis_client.get(f"count:{s_ul}")
+    print(f"Access count for {s_ul}: {slow_url_count.decode('utf-8')}")
